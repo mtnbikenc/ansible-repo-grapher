@@ -4,9 +4,11 @@ Graph playbook folder and role dependencies for OpenShift Ansible
 """
 import os
 from glob import glob
-import time
+import subprocess
 import pygraphviz as pgv
 import yaml
+
+REPO_ROOT = '../openshift-ansible'
 
 # This constant can be used to control which folders are excluded from the graph
 SKIP_FOLDERS = [
@@ -35,8 +37,22 @@ UNSUPPORTED_PLAYBOOKS = [
 # These are var files which are located adjacent to playbooks.
 SKIP_FILES = [
     'cluster_hosts.yml',
-    'vars.yml'
+    'vars.yml',
+    'vars.defaults.yml',  # file exists in older versions
 ]
+
+
+def git_info():
+    """ Retrieves the commit date and commit description """
+    git_dir = '--git-dir=%s/.git' % REPO_ROOT
+    work_tree = '--work-tree=%s' % REPO_ROOT
+
+    git_date = subprocess.check_output(
+        ['git', git_dir, work_tree, 'show', '-s', '--format=%ci'])[:10]
+    git_describe = subprocess.check_output(
+        ['git', git_dir, work_tree, 'describe']).rstrip('\n')
+
+    return '%s-%s' % (git_date, git_describe)
 
 
 def add_subgraph(graph, path):
@@ -51,7 +67,7 @@ def add_subgraph(graph, path):
     }
 
     # Subgraph names begin with 'cluster_' to draw them as a boxed collection
-    subgraph_name = 'cluster_' + path
+    subgraph_name = 'cluster_' + os.path.basename(path)
     subgraph_label = os.path.basename(path)
 
     subgraph = graph.add_subgraph(
@@ -73,9 +89,10 @@ def add_folder(graph, folder):
     """Scans a folder and
      - Adds nodes to the graph for y(a)ml files
      - Adds subgraphs for directories"""
-    for item in glob(folder + '/*'):
+    path = '%s/*' % folder
+    for item in glob(path):
         if os.path.isfile(item) and item.lower().endswith(('.yml', '.yaml')):
-            node_id = item
+            node_id = item.replace(REPO_ROOT, '')
             node_label = os.path.basename(item)
             if node_label not in SKIP_FILES:
                 graph.add_node(node_id, label=node_label)
@@ -88,31 +105,41 @@ def add_folder(graph, folder):
 def add_edge(graph, path):
     """Scans a y(a)ml file and adds an edge between nodes for all included
     playbooks"""
+
+    # Skipping some files that cause errors
+    if os.path.basename(path) in SKIP_FILES:
+        return
+
     with open(path, 'r') as yaml_file:
-        for task in yaml.safe_load(yaml_file.read()):
-            if 'include' in task:
-                include_node_id = os.path.normpath(
-                    os.path.join(os.path.dirname(path), task['include']))
-                if not graph.has_node(include_node_id):
-                    graph.add_node(
-                        include_node_id,
-                        label='Non-existent: ' + include_node_id,
-                        color='red'
-                    )
-                graph.add_edge(path, include_node_id)
-            if 'tasks' in task and task['tasks'] is not None:
-                for play_task in task['tasks']:
-                    if 'include' in play_task:
-                        include_node_id = os.path.normpath(
-                            os.path.join(os.path.dirname(path),
-                                         play_task['include']))
-                        if not graph.has_node(include_node_id):
-                            graph.add_node(
-                                include_node_id,
-                                label='Non-existent: ' + include_node_id,
-                                color='red'
-                            )
-                        graph.add_edge(path, include_node_id)
+        try:
+            for task in yaml.safe_load(yaml_file.read()):
+                if 'include' in task:
+                    include_node_id = os.path.normpath(
+                        os.path.join(os.path.dirname(path),
+                                     task['include'])).replace(REPO_ROOT, '')
+                    if not graph.has_node(include_node_id):
+                        graph.add_node(
+                            include_node_id,
+                            label='Non-existent: ' + include_node_id,
+                            color='red'
+                        )
+                    graph.add_edge(path.replace(REPO_ROOT, ''), include_node_id)
+                if 'tasks' in task and task['tasks'] is not None:
+                    for play_task in task['tasks']:
+                        if 'include' in play_task:
+                            include_node_id = os.path.normpath(
+                                os.path.join(os.path.dirname(path),
+                                             play_task['include'])).replace(REPO_ROOT, '')
+                            if not graph.has_node(include_node_id):
+                                graph.add_node(
+                                    include_node_id,
+                                    label='Non-existent: ' + include_node_id,
+                                    color='red'
+                                )
+                            graph.add_edge(path.replace(REPO_ROOT, ''),
+                                           include_node_id)
+        except TypeError as error:
+            print "TypeError: '{0}' for file: {1}".format(error, path)
 
 
 def add_edges(graph, folder):
@@ -120,7 +147,8 @@ def add_edges(graph, folder):
      - Adds an edge between nodes for y(a)ml files
      - Traverses subdirectories
     All edges are added to the root graph"""
-    for item in glob(folder + '/*'):
+    path = '%s/*' % folder
+    for item in glob(path):
         if os.path.isfile(item) and item.lower().endswith(('.yml', '.yaml')):
             add_edge(graph, item)
         elif os.path.isdir(item):
@@ -136,30 +164,38 @@ def add_role_link(graph, path):
         'color': 'blue'
     }
 
+    # Skipping some files that cause errors
+    if os.path.basename(path) in SKIP_FILES:
+        return
+
     with open(path, 'r') as yaml_file:
-        for task in yaml.safe_load(yaml_file.read()):
-            if 'roles' in task:
-                for role in task['roles']:
-                    if 'role' in role:
-                        # Some 'roles:' include a 'role:' identifier
-                        graph.add_edge(
-                            path,
-                            os.path.join('roles', role['role']),
-                            **role_edge_style
-                        )
-                    else:
-                        graph.add_edge(
-                            path,
-                            os.path.join('roles', role),
-                            **role_edge_style
-                        )
+        try:
+            for task in yaml.safe_load(yaml_file.read()):
+                if 'roles' in task:
+                    for role in task['roles']:
+                        if 'role' in role:
+                            # Some 'roles:' include a 'role:' identifier
+                            graph.add_edge(
+                                path.replace(REPO_ROOT, ''),
+                                os.path.join('/roles', role['role']),
+                                **role_edge_style
+                            )
+                        else:
+                            graph.add_edge(
+                                path.replace(REPO_ROOT, ''),
+                                os.path.join('/roles', role),
+                                **role_edge_style
+                            )
+        except TypeError as error:
+            print "TypeError: '{0}' for file: {1}".format(error, path)
 
 
 def add_roles(graph, folder):
     """Scans a folder and
      - Adds a role link for y(a)ml files
      - Traverses subdirectories"""
-    for item in glob(folder + '/*'):
+    path = '%s/*' % folder
+    for item in glob(path):
         if os.path.isfile(item) and item.lower().endswith(('.yml', '.yaml')):
             add_role_link(graph, item)
         elif os.path.isdir(item):
@@ -174,19 +210,29 @@ def add_role_cluster(graph, folder):
     subgraph.graph_attr.update(
         color='blue'
     )
-    for item in glob(folder + '/*'):
+    path = '%s/*' % folder
+    for item in glob(path):
         if os.path.isdir(item):
             if os.path.basename(item) not in SKIP_FOLDERS:
-                node_id = item
+                node_id = item.replace(REPO_ROOT, '')
                 node_label = os.path.basename(item)
                 subgraph.add_node(node_id, label=node_label)
 
-    for path in glob(folder + '/*/meta/main.yml'):
-        dependent_role = os.path.join(folder, path.split('/')[1])
-        with open(path, 'r') as yaml_file:
+    path = '%s/*/meta/main.yml' % folder
+    for item in glob(path):
+        # This is ugly, fix the reliance on splitting for '3'
+        dependent_role = os.path.join(folder,
+                                      item.split('/')[3]).replace(REPO_ROOT, '')
+        with open(item, 'r') as yaml_file:
             try:
                 for dependency in yaml.load(yaml_file.read())['dependencies']:
-                    depended_role = os.path.join(folder, dependency['role'])
+                    if 'role' in dependency:
+                        # Some 'roles:' include a 'role:' identifier
+                        depended_role = os.path.join(folder,
+                                                     dependency['role']).replace(REPO_ROOT, '')
+                    else:
+                        depended_role = os.path.join(folder,
+                                                     dependency).replace(REPO_ROOT, '')
                     graph.add_edge(dependent_role, depended_role, color='red')
             except KeyError:
                 pass
@@ -194,8 +240,8 @@ def add_role_cluster(graph, folder):
 
 def main():
     """Creates the main graph, subgraphs, nodes and edges (links)"""
-    create_date = time.strftime("%Y-%m-%d")
-    root_graph_label = 'OpenShift-Ansible Playbooks (%s)' % create_date
+    git_checkout = git_info()
+    root_graph_label = 'OpenShift-Ansible (%s)' % git_checkout
     root_graph = pgv.AGraph(
         strict=True,
         directed=True,
@@ -204,7 +250,9 @@ def main():
         label=root_graph_label,
         labelloc='t',
         fontname='bold',
-        ranksep='2.0'
+        ranksep='2.0',
+        size="36,36",
+        dpi="96",
     )
 
     root_graph.node_attr.update(
@@ -214,16 +262,16 @@ def main():
         fillcolor='white'
     )
 
-    playbook_folder = '../openshift-ansible/playbooks'
+    playbook_folder = '%s/playbooks' % REPO_ROOT
     add_folder(root_graph, playbook_folder)
     add_edges(root_graph, playbook_folder)
 
-    role_folder = 'roles'
+    role_folder = '%s/roles' % REPO_ROOT
     add_role_cluster(root_graph, role_folder)
     add_roles(root_graph, playbook_folder)
 
-    root_graph.write('openshift-ansible-graph-%s.dot' % create_date)
-    root_graph.draw('openshift-ansible-graph-%s.png' % create_date, prog='dot')
+    root_graph.write('%s.dot' % git_checkout)
+    root_graph.draw('%s.png' % git_checkout, prog='dot')
 
 
 if __name__ == '__main__':
