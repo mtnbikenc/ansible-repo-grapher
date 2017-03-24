@@ -64,7 +64,7 @@ def add_roles(roles, subgraph, node_id, playbook_repo_root):
             role_name = role['role']
         else:
             role_name = role
-        role_node_id = '%s_roles/%s' % (node_id, role_name)
+        role_node_id = uuid.uuid4()
         role_node_label = 'role: %s' % role_name
         subgraph.add_node(role_node_id, label=role_node_label, **role_node_style)
 
@@ -132,10 +132,7 @@ def add_playbook(graph, playbook, playbook_repo_root, parent_node=None):
         previous_task = None
         for task in yaml.safe_load(yaml_file.read()):
             if 'include' in task:
-                node_id = os.path.basename(playbook) + '_' + os.path.normpath(
-                    os.path.join(
-                        os.path.dirname(playbook).replace(playbook_repo_root + '/', ''),
-                        task['include']))
+                node_id = uuid.uuid4()
                 node_label = 'include: %s' % task['include']
                 subgraph.add_node(node_id, label=node_label)
 
@@ -151,7 +148,7 @@ def add_playbook(graph, playbook, playbook_repo_root, parent_node=None):
                 previous_task = node_id
 
             if 'hosts' in task:
-                node_id = os.path.basename(playbook) + '_' + task['name']
+                node_id = uuid.uuid4()
                 node_label = 'Play: %s (%s)' % (task['name'], task['hosts'])
                 subgraph.add_node(node_id, label=node_label, **play_node_style)
 
