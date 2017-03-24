@@ -161,9 +161,9 @@ def main():
 
     filename = '%s-%s_%s' % (git_checkout, os.path.split(playbook_dir)[-1], playbook_file)
     root_graph.write('%s.dot' % filename)
-    print ('Generated: %s.dot' % filename)
+    print 'Generated: %s.dot' % filename
     root_graph.draw('%s.png' % filename, prog='dot')
-    print ('Generated: %s.png' % filename)
+    print 'Generated: %s.png' % filename
 
 
 if __name__ == '__main__':
