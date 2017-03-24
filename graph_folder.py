@@ -112,7 +112,7 @@ def add_edge(graph, path):
 
     with open(path, 'r') as yaml_file:
         try:
-            for task in yaml.safe_load(yaml_file.read()):
+            for task in yaml.safe_load(yaml_file.read()):  # yaml.parser.ParserError: while parsing a block mapping
                 if 'include' in task:
                     include_node_id = os.path.normpath(
                         os.path.join(os.path.dirname(path),
@@ -140,6 +140,8 @@ def add_edge(graph, path):
                                            include_node_id)
         except TypeError as error:
             print "TypeError: '{0}' for file: {1}".format(error, path)
+        except Exception as error:
+            print "Exception: '{0}' for file: {1}".format(error, path)
 
 
 def add_edges(graph, folder):
@@ -183,11 +185,13 @@ def add_role_link(graph, path):
                         else:
                             graph.add_edge(
                                 path.replace(REPO_ROOT, ''),
-                                os.path.join('/roles', role),
+                                os.path.join('/roles', role),  # AttributeError: 'dict' object has no attribute 'startswith'
                                 **role_edge_style
                             )
         except TypeError as error:
             print "TypeError: '{0}' for file: {1}".format(error, path)
+        except AttributeError as error:
+            print "AttributeError: '{0}' for file: {1}".format(error, path)
 
 
 def add_roles(graph, folder):
