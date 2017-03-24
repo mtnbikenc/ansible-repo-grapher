@@ -10,6 +10,7 @@ import sys
 import subprocess
 import pygraphviz as pgv
 import yaml
+import uuid
 
 
 def git_info(directory):
@@ -46,7 +47,7 @@ def add_subgraph(graph, playbook, playbook_repo_root):
     return subgraph
 
 
-def add_roles(roles, subgraph, node_id):
+def add_roles(roles, subgraph, node_id, playbook_repo_root):
     """ Adds role nodes to a subgraph """
     role_node_style = {
         'color': 'blue'
@@ -67,11 +68,51 @@ def add_roles(roles, subgraph, node_id):
         role_node_label = 'role: %s' % role_name
         subgraph.add_node(role_node_id, label=role_node_label, **role_node_style)
 
+        add_role_dependency(subgraph, role_node_id, role_name, playbook_repo_root)
+
         if previous_role is None:
             subgraph.add_edge(node_id, role_node_id, **role_edge_style)
         else:
             subgraph.add_edge(previous_role, role_node_id, **role_edge_style)
         previous_role = role_node_id
+
+
+def add_role_dependency(subgraph, role_node_id, role_name, playbook_repo_root):
+    dep_role_node_style = {
+        'color': 'red'
+    }
+    dep_role_edge_style = {
+        'color': 'red'
+    }
+
+    # Check to see if meta/main.yml or meta/main.yaml exist
+    role_meta = os.path.join(playbook_repo_root, 'roles', role_name, 'meta', 'main.yml')
+    if not os.path.isfile(role_meta):
+        role_meta = os.path.join(playbook_repo_root, 'roles', role_name, 'meta', 'main.yaml')
+        if not os.path.isfile(role_meta):
+            return
+
+    with open(role_meta, 'r') as yaml_file:
+        try:
+            previous_node = role_node_id
+            for dependency in yaml.load(yaml_file.read())['dependencies']:
+                if 'role' in dependency:
+                    # Some 'roles:' include a 'role:' identifier
+                    dep_role_name = dependency['role']
+                else:
+                    dep_role_name = dependency
+
+                dep_role_node_id = uuid.uuid4()
+                dep_role_node_label = 'role_dep: %s' % dep_role_name
+                subgraph.add_node(dep_role_node_id, label=dep_role_node_label, **dep_role_node_style)
+                subgraph.add_edge(previous_node, dep_role_node_id, **dep_role_edge_style)
+
+                add_role_dependency(subgraph, dep_role_node_id, dep_role_name, playbook_repo_root)
+
+                previous_node = dep_role_node_id
+
+        except KeyError:
+            pass
 
 
 def add_playbook(graph, playbook, playbook_repo_root, parent_node=None):
@@ -80,6 +121,10 @@ def add_playbook(graph, playbook, playbook_repo_root, parent_node=None):
       - Add a subgraph for the playbook
       - Adds nodes to the subgraph for include statements
     """
+
+    play_node_style = {
+        'color': 'green'
+    }
 
     subgraph = add_subgraph(graph, playbook, playbook_repo_root)
 
@@ -108,10 +153,10 @@ def add_playbook(graph, playbook, playbook_repo_root, parent_node=None):
             if 'hosts' in task:
                 node_id = os.path.basename(playbook) + '_' + task['name']
                 node_label = 'Play: %s (%s)' % (task['name'], task['hosts'])
-                subgraph.add_node(node_id, label=node_label, color='red')
+                subgraph.add_node(node_id, label=node_label, **play_node_style)
 
                 if 'roles' in task:
-                    add_roles(task['roles'], subgraph, node_id)
+                    add_roles(task['roles'], subgraph, node_id, playbook_repo_root)
 
                 if previous_task is None:
                     if parent_node is not None:
@@ -147,6 +192,7 @@ def main():
         # dpi="96",
     )
 
+    # Default node style
     root_graph.node_attr.update(
         shape='box',
         style='rounded, filled',
