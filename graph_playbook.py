@@ -12,6 +12,9 @@ import uuid
 import pygraphviz as pgv
 import yaml
 
+DISPLAY_ROLES = False
+DISPLAY_ROLE_DEPS = False
+
 
 def git_info(directory):
     """ Retrieves the commit date and commit description """
@@ -68,7 +71,8 @@ def add_roles(roles, subgraph, node_id, repo_root):
         role_node_label = 'role: %s' % role_name
         subgraph.add_node(role_node_id, label=role_node_label, **role_node_style)
 
-        add_role_dependency(subgraph, role_node_id, role_name, repo_root)
+        if DISPLAY_ROLE_DEPS:
+            add_role_dependency(subgraph, role_node_id, role_name, repo_root)
 
         if previous_role is None:
             subgraph.add_edge(node_id, role_node_id, **role_edge_style)
@@ -163,11 +167,16 @@ def add_playbook(graph, playbook, repo_root, parent_node=None):
 
             if 'hosts' in task:
                 node_id = uuid.uuid4()
-                node_label = 'Play: %s\n(%s)' % (task['name'], task['hosts'])
+                if 'name' in task:
+                    task_name = task['name']
+                else:
+                    task_name = 'Unnamed task'
+                node_label = 'Play: %s\n(%s)' % (task_name, task['hosts'])
                 subgraph.add_node(node_id, label=node_label, **play_node_style)
 
-                if 'roles' in task:
-                    add_roles(task['roles'], subgraph, node_id, repo_root)
+                if DISPLAY_ROLES or DISPLAY_ROLE_DEPS:
+                    if 'roles' in task:
+                        add_roles(task['roles'], subgraph, node_id, repo_root)
 
                 if previous_task is None:
                     if parent_node is not None:
