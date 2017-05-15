@@ -171,7 +171,7 @@ def add_playbook(graph, playbook, repo_root, parent_node=None):
         for task in yaml.safe_load(yaml_file.read()):
             if 'include' in task:
                 node_id = uuid.uuid4()
-                node_label = 'include: %{}'.format(task['include'])
+                node_label = 'include: {}'.format(task['include'])
                 subgraph.add_node(node_id, label=node_label)
 
                 included_file = os.path.normpath(
