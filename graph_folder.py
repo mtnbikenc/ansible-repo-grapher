@@ -22,6 +22,7 @@ SKIP_FOLDERS = [
     'lookup_plugins',  # No yml files
     'v3_3',  # Old upgrade playbooks
     'v3_4',  # Old upgrade playbooks
+    'v3_5',  # Old upgrade playbooks
 ]
 
 UNSUPPORTED_PLAYBOOKS = [
@@ -31,8 +32,8 @@ UNSUPPORTED_PLAYBOOKS = [
     'openstack'
 ]
 
-# Uncomment this if you want to leave out unsupported playbooks
-# SKIP_FOLDERS.extend(UNSUPPORTED_PLAYBOOKS)
+# Comment this line if you want to include unsupported playbooks
+SKIP_FOLDERS.extend(UNSUPPORTED_PLAYBOOKS)
 
 # These are var files which are located adjacent to playbooks.
 SKIP_FILES = [
@@ -118,6 +119,8 @@ def add_edge(graph, path):
                         os.path.join(os.path.dirname(path),
                                      task['include'])).replace(REPO_ROOT, '')
                     if not graph.has_node(include_node_id):
+                        print "ERROR: {}\n" \
+                              "       Includes non-existent playbook: {}".format(path.replace(REPO_ROOT, ''), include_node_id)
                         graph.add_node(
                             include_node_id,
                             label='Non-existent: ' + include_node_id,
@@ -255,7 +258,7 @@ def main():
         labelloc='t',
         fontname='bold',
         ranksep='2.0',
-        size="36,36",
+        size="300,300",
         dpi="96",
     )
 

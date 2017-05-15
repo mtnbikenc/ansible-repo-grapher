@@ -5,6 +5,8 @@ Graph playbook and role dependencies for OpenShift Ansible
 Usage:
 ./graph_playbook.py <path_to_playbook_file>
 """
+from __future__ import print_function
+
 import os
 import sys
 import subprocess
@@ -12,7 +14,7 @@ import uuid
 import pygraphviz as pgv
 import yaml
 
-DISPLAY_ROLES = False
+DISPLAY_ROLES = True
 DISPLAY_ROLE_DEPS = False
 
 
@@ -20,26 +22,28 @@ def git_info(directory):
     """ Retrieves the commit date and commit description """
 
     git_date = subprocess.check_output(
-        ['git', 'show', '-s', '--format=%ci'], cwd=directory)[:10]
+        ['git', 'show', '-s', '--format=%ci'], cwd=directory)
+    git_date = str(git_date)[:10]
     git_describe = subprocess.check_output(
         ['git', 'describe', '--always'], cwd=directory).rstrip('\n')
 
-    return '%s-%s' % (git_date, git_describe)
+    return '{}-{}'.format(git_date, git_describe)
 
 
-def add_subgraph(graph, playbook_name):
+def add_subgraph(graph, playbook_name, subgraph_style=None):
     """Adds a formatted subgraph to a given graph based on the path of the
     folder provided.  Returns a copy of the subgraph."""
-    subgraph_style = {
-        'fontname': 'bold',
-        'color': 'black',
-        'style': 'filled',
-        'fillcolor': 'lightgrey',
-        'labeljust': 'l'
-    }
+    if subgraph_style is None:
+        subgraph_style = {
+            'fontname': 'bold',
+            'color': 'black',
+            'style': 'filled',
+            'fillcolor': 'lightgrey',
+            'labeljust': 'l'
+        }
 
     # Subgraph names begin with 'cluster_' to draw them as a boxed collection
-    subgraph_name = 'cluster_%s' % playbook_name
+    subgraph_name = 'cluster_{}'.format(playbook_name)
     subgraph_label = playbook_name
 
     subgraph = graph.add_subgraph(
@@ -68,7 +72,7 @@ def add_roles(roles, subgraph, node_id, repo_root):
         else:
             role_name = role
         role_node_id = uuid.uuid4()
-        role_node_label = 'role: %s' % role_name
+        role_node_label = 'role: {}'.format(role_name)
         subgraph.add_node(role_node_id, label=role_node_label, **role_node_style)
 
         if DISPLAY_ROLE_DEPS:
@@ -80,7 +84,7 @@ def add_roles(roles, subgraph, node_id, repo_root):
             subgraph.add_edge(previous_role, role_node_id, **role_edge_style)
         previous_role = role_node_id
 
-
+# pylint: disable=too-many-arguments
 def add_role_dependency(subgraph, role_node_id, role_name, repo_root,
                         role_level=0, first_dep=True):
     """ Adds role dependencies """
@@ -119,9 +123,14 @@ def add_role_dependency(subgraph, role_node_id, role_name, repo_root,
                     dep_role_name = dependency
 
                 dep_role_node_id = uuid.uuid4()
-                dep_role_node_label = 'role_dep(%s): %s' % (role_level, dep_role_name)
-                subgraph.add_node(dep_role_node_id, label=dep_role_node_label, **dep_role_node_style)
-                subgraph.add_edge(previous_node, dep_role_node_id, **dep_role_edge_style)
+                dep_role_node_label = 'role_dep({}): {}'.format(role_level,
+                                                                dep_role_name)
+                subgraph.add_node(dep_role_node_id,
+                                  label=dep_role_node_label,
+                                  **dep_role_node_style)
+                subgraph.add_edge(previous_node,
+                                  dep_role_node_id,
+                                  **dep_role_edge_style)
 
                 add_role_dependency(subgraph, dep_role_node_id, dep_role_name,
                                     repo_root, role_level, first_dep=False)
@@ -131,7 +140,7 @@ def add_role_dependency(subgraph, role_node_id, role_name, repo_root,
         except KeyError:
             pass
 
-
+# pylint: disable=too-many-branches
 def add_playbook(graph, playbook, repo_root, parent_node=None):
     """
     Scans a playbook file and
@@ -144,14 +153,25 @@ def add_playbook(graph, playbook, repo_root, parent_node=None):
     }
 
     playbook_name = playbook.replace(repo_root + '/', '')
-    subgraph = add_subgraph(graph, playbook_name)
+
+    # Set alternate style of first subgraph, the entry-point playbook
+    subgraph_style = None
+    if graph.subgraphs().__len__() < 1:
+        subgraph_style = {
+            'fontname': 'bold',
+            'color': 'black',
+            'style': 'filled',
+            'fillcolor': 'green',
+            'labeljust': 'l'
+        }
+    subgraph = add_subgraph(graph, playbook_name, subgraph_style)
 
     with open(playbook, 'r') as yaml_file:
         previous_task = None
         for task in yaml.safe_load(yaml_file.read()):
             if 'include' in task:
                 node_id = uuid.uuid4()
-                node_label = 'include: %s' % task['include']
+                node_label = 'include: %{}'.format(task['include'])
                 subgraph.add_node(node_id, label=node_label)
 
                 included_file = os.path.normpath(
@@ -171,7 +191,7 @@ def add_playbook(graph, playbook, repo_root, parent_node=None):
                     task_name = task['name']
                 else:
                     task_name = 'Unnamed task'
-                node_label = 'Play: %s\n(%s)' % (task_name, task['hosts'])
+                node_label = 'Play: {}\n({})'.format(task_name, task['hosts'])
                 subgraph.add_node(node_id, label=node_label, **play_node_style)
 
                 if DISPLAY_ROLES or DISPLAY_ROLE_DEPS:
@@ -198,7 +218,7 @@ def main():
 
     git_checkout = git_info(playbook_dir)
 
-    root_graph_label = '%s (%s)' % (repo_name, git_checkout)
+    root_graph_label = '{} ({})'.format(repo_name, git_checkout)
     root_graph = pgv.AGraph(
         strict=True,
         directed=True,
@@ -208,8 +228,8 @@ def main():
         labelloc='t',
         fontname='bold',
         # ranksep='2.0',
-        # size="36,36",
-        # dpi="96",
+        size="300,300",
+        dpi="96",
     )
 
     # Default node style
@@ -222,11 +242,13 @@ def main():
 
     add_playbook(root_graph, playbook, repo_root)
 
-    filename = '%s-%s_%s' % (git_checkout, os.path.split(playbook_dir)[-1], playbook_file)
-    root_graph.write('%s.dot' % filename)
-    print 'Generated: %s.dot' % filename
-    root_graph.draw('%s.png' % filename, prog='dot')
-    print 'Generated: %s.png' % filename
+    filename = '{}-{}_{}'.format(git_checkout,
+                                 os.path.split(playbook_dir)[-1],
+                                 playbook_file)
+    root_graph.write('{}.dot'.format(filename))
+    print('Generated: {}.dot'.format(filename))
+    root_graph.draw('{}.png'.format(filename), prog='dot')
+    print('Generated: {}.png'.format(filename))
 
 
 if __name__ == '__main__':

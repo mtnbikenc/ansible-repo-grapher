@@ -1,4 +1,7 @@
 /*.dot
 /*.png
+/*.mkv
 *.egg-info
+*.pyc
 build/
+.tox/
