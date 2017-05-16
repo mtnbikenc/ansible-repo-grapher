@@ -37,12 +37,13 @@ def playbook(playbook_path):
 @click.command(
     short_help='Graphs a folder',
     help='Graphs a folder')
-def folder():
+@click.argument('folder-path', nargs=1)
+def folder(folder_path):
     """
     Executes the folder subcommand.
     """
     from .graph_folder import main as exe
-    exe()
+    exe(folder_path)
 
 
 def main():
