@@ -8,7 +8,6 @@ Usage:
 from __future__ import print_function
 
 import os
-import sys
 import subprocess
 import uuid
 import pygraphviz as pgv
@@ -206,10 +205,13 @@ def add_playbook(graph, playbook, repo_root, parent_node=None):
                 previous_task = node_id
 
 
-def main():
-    """Creates the main graph, subgraphs, nodes and edges (links)"""
+def main(playbook):
+    """
+    Creates the main graph, subgraphs, nodes and edges (links)
 
-    playbook = os.path.realpath(sys.argv[1])
+    :param playbook: The name of the playbook.
+    :type playbook: str
+    """
     playbook_dir = os.path.dirname(playbook)
     playbook_file = os.path.basename(playbook)
     repo_root = subprocess.check_output(
@@ -252,4 +254,6 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    import sys
+
+    main(sys.argv[1])
