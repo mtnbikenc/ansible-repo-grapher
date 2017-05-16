@@ -2,6 +2,8 @@
 """
 Graph playbook folder and role dependencies for OpenShift Ansible
 """
+from __future__ import print_function
+
 import os
 from glob import glob
 import subprocess
@@ -49,9 +51,9 @@ def git_info():
     work_tree = '--work-tree=%s' % REPO_ROOT
 
     git_date = subprocess.check_output(
-        ['git', git_dir, work_tree, 'show', '-s', '--format=%ci'])[:10]
+        ['git', git_dir, work_tree, 'show', '-s', '--format=%ci']).decode()[:10]
     git_describe = subprocess.check_output(
-        ['git', git_dir, work_tree, 'describe']).rstrip('\n')
+        ['git', git_dir, work_tree, 'describe']).decode().rstrip('\n')
 
     return '%s-%s' % (git_date, git_describe)
 
@@ -119,8 +121,8 @@ def add_edge(graph, path):
                         os.path.join(os.path.dirname(path),
                                      task['include'])).replace(REPO_ROOT, '')
                     if not graph.has_node(include_node_id):
-                        print "ERROR: {}\n" \
-                              "       Includes non-existent playbook: {}".format(path.replace(REPO_ROOT, ''), include_node_id)
+                        print("ERROR: {}\n" \
+                              "       Includes non-existent playbook: {}".format(path.replace(REPO_ROOT, ''), include_node_id))
                         graph.add_node(
                             include_node_id,
                             label='Non-existent: ' + include_node_id,
@@ -142,9 +144,9 @@ def add_edge(graph, path):
                             graph.add_edge(path.replace(REPO_ROOT, ''),
                                            include_node_id)
         except TypeError as error:
-            print "TypeError: '{0}' for file: {1}".format(error, path)
+            print("TypeError: '{0}' for file: {1}".format(error, path))
         except Exception as error:
-            print "Exception: '{0}' for file: {1}".format(error, path)
+            print("Exception: '{0}' for file: {1}".format(error, path))
 
 
 def add_edges(graph, folder):
@@ -192,9 +194,9 @@ def add_role_link(graph, path):
                                 **role_edge_style
                             )
         except TypeError as error:
-            print "TypeError: '{0}' for file: {1}".format(error, path)
+            print("TypeError: '{0}' for file: {1}".format(error, path))
         except AttributeError as error:
-            print "AttributeError: '{0}' for file: {1}".format(error, path)
+            print("AttributeError: '{0}' for file: {1}".format(error, path))
 
 
 def add_roles(graph, folder):

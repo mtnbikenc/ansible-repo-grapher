@@ -21,10 +21,10 @@ def git_info(directory):
     """ Retrieves the commit date and commit description """
 
     git_date = subprocess.check_output(
-        ['git', 'show', '-s', '--format=%ci'], cwd=directory)
+        ['git', 'show', '-s', '--format=%ci'], cwd=directory).decode()
     git_date = str(git_date)[:10]
     git_describe = subprocess.check_output(
-        ['git', 'describe', '--always'], cwd=directory).rstrip('\n')
+        ['git', 'describe', '--always'], cwd=directory).decode().rstrip('\n')
 
     return '{}-{}'.format(git_date, git_describe)
 
@@ -215,7 +215,7 @@ def main(playbook):
     playbook_dir = os.path.dirname(playbook)
     playbook_file = os.path.basename(playbook)
     repo_root = subprocess.check_output(
-        ['git', 'rev-parse', '--show-toplevel'], cwd=playbook_dir).rstrip('\n')
+        ['git', 'rev-parse', '--show-toplevel'], cwd=playbook_dir).decode().rstrip('\n')
     repo_name = os.path.split(repo_root)[-1]
 
     git_checkout = git_info(playbook_dir)
