@@ -8,7 +8,6 @@ Usage:
 from __future__ import print_function
 
 import os
-import sys
 import subprocess
 import uuid
 import pygraphviz as pgv
@@ -22,10 +21,10 @@ def git_info(directory):
     """ Retrieves the commit date and commit description """
 
     git_date = subprocess.check_output(
-        ['git', 'show', '-s', '--format=%ci'], cwd=directory)
+        ['git', 'show', '-s', '--format=%ci'], cwd=directory).decode()
     git_date = str(git_date)[:10]
     git_describe = subprocess.check_output(
-        ['git', 'describe', '--always'], cwd=directory).rstrip('\n')
+        ['git', 'describe', '--always'], cwd=directory).decode().rstrip('\n')
 
     return '{}-{}'.format(git_date, git_describe)
 
@@ -206,14 +205,17 @@ def add_playbook(graph, playbook, repo_root, parent_node=None):
                 previous_task = node_id
 
 
-def main():
-    """Creates the main graph, subgraphs, nodes and edges (links)"""
+def main(playbook):
+    """
+    Creates the main graph, subgraphs, nodes and edges (links)
 
-    playbook = os.path.realpath(sys.argv[1])
+    :param playbook: The name of the playbook.
+    :type playbook: str
+    """
     playbook_dir = os.path.dirname(playbook)
     playbook_file = os.path.basename(playbook)
     repo_root = subprocess.check_output(
-        ['git', 'rev-parse', '--show-toplevel'], cwd=playbook_dir).rstrip('\n')
+        ['git', 'rev-parse', '--show-toplevel'], cwd=playbook_dir).decode().rstrip('\n')
     repo_name = os.path.split(repo_root)[-1]
 
     git_checkout = git_info(playbook_dir)
@@ -252,4 +254,6 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    import sys
+
+    main(sys.argv[1])
