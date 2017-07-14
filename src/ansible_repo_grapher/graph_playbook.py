@@ -83,6 +83,100 @@ def add_roles(roles, subgraph, node_id, repo_root):
             subgraph.add_edge(previous_role, role_node_id, **role_edge_style)
         previous_role = role_node_id
 
+
+def add_tasks(tasks, subgraph, graph, node_id, playbook, repo_root):
+    """ Adds tasks nodes to a subgraph """
+    task_node_style = {
+        'color': 'orange'
+    }
+
+    task_edge_style = {
+        'color': 'orange'
+    }
+
+    previous_task = None
+    for task in tasks:
+        if 'block' in task:
+            block_node_id = uuid.uuid4()
+            subgraph.add_node(block_node_id, label="block:", **task_node_style)
+            if previous_task is None:
+                previous_task = node_id
+            subgraph.add_edge(previous_task, block_node_id, **task_edge_style)
+            add_tasks(task['block'], subgraph, graph, block_node_id, playbook, repo_root)
+            previous_task = block_node_id
+
+        elif 'include_role' in task:
+            if 'name' in task:
+                task_name = task['name']
+            else:
+                task_name = '(Unnamed)'
+            task_node_id = uuid.uuid4()
+            task_node_label = 'include_role: {}'.format(task_name)
+            subgraph.add_node(task_node_id, label=task_node_label, **task_node_style)
+            add_roles([task['include_role']['name']], subgraph, task_node_id, repo_root)
+            if previous_task is None:
+                previous_task = node_id
+            subgraph.add_edge(previous_task, task_node_id, **task_edge_style)
+            previous_task = task_node_id
+
+        elif 'include' in task:
+            # Create the node
+            task_node_id = uuid.uuid4()
+            # We have to split here because sometimes the included file
+            # also has string variables inline.  YAML please!
+            if '{{' not in task['include']:
+                included_file_name = task['include'].split()[0]
+            else:
+                included_file_name = task['include']
+            task_node_label = 'include: {}'.format(included_file_name)
+            subgraph.add_node(task_node_id, label=task_node_label, **task_node_style)
+
+            # Add the link to the previous node
+            if previous_task is None:
+                previous_task = node_id
+            subgraph.add_edge(previous_task, task_node_id, **task_edge_style)
+
+            # If the include is a variable reference, don't process the file
+            if '{{' in task['include']:
+                previous_task = task_node_id
+                continue
+
+            # Create the full path to the included file
+            included_file = os.path.normpath(
+                os.path.join(os.path.dirname(playbook), included_file_name))
+            # Create the 'short path' version of the included file
+            playbook_name = included_file.replace(repo_root + '/', '')
+
+            # Check to see if the subgraph exists
+            playbook_graph = subgraph.get_subgraph('cluster_' + playbook_name)
+            if playbook_graph is not None:
+                # Subgraph for playbook exists so we just need to create an edge
+                subgraph.add_edge(previous_task, playbook_graph.nodes()[0])
+                return
+
+            include_subgraph = add_subgraph(graph, playbook_name)
+
+            with open(included_file, 'r') as yaml_file:
+                included_tasks = yaml.safe_load(yaml_file.read())
+                add_tasks(included_tasks, include_subgraph, graph, task_node_id, included_file, repo_root)
+
+            previous_task = task_node_id
+
+        else:
+            if 'name' in task:
+                task_name = task['name']
+            else:
+                # Since there is no name we punt and just grab the first key
+                task_name = '(Unnamed) {}'.format(task.keys()[0])
+            task_node_id = uuid.uuid4()
+            task_node_label = 'task: {}'.format(task_name)
+            subgraph.add_node(task_node_id, label=task_node_label, **task_node_style)
+            if previous_task is None:
+                previous_task = node_id
+            subgraph.add_edge(previous_task, task_node_id, **task_edge_style)
+            previous_task = task_node_id
+
+
 # pylint: disable=too-many-arguments
 def add_role_dependency(subgraph, role_node_id, role_name, repo_root,
                         role_level=0, first_dep=True):
@@ -139,6 +233,7 @@ def add_role_dependency(subgraph, role_node_id, role_name, repo_root,
         except KeyError:
             pass
 
+
 # pylint: disable=too-many-branches
 def add_playbook(graph, playbook, repo_root, parent_node=None):
     """
@@ -163,6 +258,13 @@ def add_playbook(graph, playbook, repo_root, parent_node=None):
             'fillcolor': 'green',
             'labeljust': 'l'
         }
+
+    playbook_graph = graph.get_subgraph('cluster_' + playbook_name)
+    if playbook_graph is not None:
+        # Subgraph for playbook exists so we just need to create an edge
+        graph.add_edge(parent_node, playbook_graph.nodes()[0])
+        return
+
     subgraph = add_subgraph(graph, playbook_name, subgraph_style)
 
     with open(playbook, 'r') as yaml_file:
@@ -170,11 +272,14 @@ def add_playbook(graph, playbook, repo_root, parent_node=None):
         for task in yaml.safe_load(yaml_file.read()):
             if 'include' in task:
                 node_id = uuid.uuid4()
-                node_label = 'include: {}'.format(task['include'])
+                # We have to strip here because sometimes the included file
+                # also has string variables inline.  YAML please!
+                included_file_name = task['include'].split()[0]
+                node_label = 'include: {}'.format(included_file_name)
                 subgraph.add_node(node_id, label=node_label)
 
                 included_file = os.path.normpath(
-                    os.path.join(os.path.dirname(playbook), task['include']))
+                    os.path.join(os.path.dirname(playbook), included_file_name))
                 add_playbook(graph, included_file, repo_root, parent_node=node_id)
 
                 if previous_task is None:
@@ -189,13 +294,45 @@ def add_playbook(graph, playbook, repo_root, parent_node=None):
                 if 'name' in task:
                     task_name = task['name']
                 else:
-                    task_name = 'Unnamed task'
+                    task_name = '(Unnamed)'
                 node_label = 'Play: {}\n({})'.format(task_name, task['hosts'])
                 subgraph.add_node(node_id, label=node_label, **play_node_style)
+                previous_node_id = node_id
 
-                if DISPLAY_ROLES or DISPLAY_ROLE_DEPS:
-                    if 'roles' in task:
-                        add_roles(task['roles'], subgraph, node_id, repo_root)
+                if 'pre_tasks' in task and task['pre_tasks'] is not None:
+                    # print('{} {}'.format(playbook, len(task['tasks'])))
+                    tasks_node_id = uuid.uuid4()
+                    tasks_node_label = 'pre_tasks: {}'.format(len(task['pre_tasks']))
+                    subgraph.add_node(tasks_node_id, label=tasks_node_label)
+                    subgraph.add_edge(previous_node_id, tasks_node_id)
+                    add_tasks(task['pre_tasks'], subgraph, graph, tasks_node_id, playbook, repo_root)
+                    previous_node_id = tasks_node_id
+
+                if 'roles' in task:
+                    if DISPLAY_ROLES or DISPLAY_ROLE_DEPS:
+                        roles_node_id = uuid.uuid4()
+                        roles_node_label = 'roles: {}'.format(len(task['roles']))
+                        subgraph.add_node(roles_node_id, label=roles_node_label)
+                        subgraph.add_edge(previous_node_id, roles_node_id)
+                        add_roles(task['roles'], subgraph, roles_node_id, repo_root)
+                        previous_node_id = roles_node_id
+
+                if 'tasks' in task and task['tasks'] is not None:
+                    # print('{} {}'.format(playbook, len(task['tasks'])))
+                    tasks_node_id = uuid.uuid4()
+                    tasks_node_label = 'tasks: {}'.format(len(task['tasks']))
+                    subgraph.add_node(tasks_node_id, label=tasks_node_label)
+                    subgraph.add_edge(previous_node_id, tasks_node_id)
+                    add_tasks(task['tasks'], subgraph, graph, tasks_node_id, playbook, repo_root)
+                    previous_node_id = tasks_node_id
+
+                if 'post_tasks' in task and task['post_tasks'] is not None:
+                    # print('{} {}'.format(playbook, len(task['tasks'])))
+                    tasks_node_id = uuid.uuid4()
+                    tasks_node_label = 'post_tasks: {}'.format(len(task['post_tasks']))
+                    subgraph.add_node(tasks_node_id, label=tasks_node_label)
+                    subgraph.add_edge(previous_node_id, tasks_node_id)
+                    add_tasks(task['post_tasks'], subgraph, graph, tasks_node_id, playbook, repo_root)
 
                 if previous_task is None:
                     if parent_node is not None:
@@ -224,7 +361,7 @@ def main(playbook):
     root_graph = pgv.AGraph(
         strict=True,
         directed=True,
-        concentrate=True,
+        concentrate=False,
         rankdir='TB',
         label=root_graph_label,
         labelloc='t',
@@ -243,6 +380,8 @@ def main(playbook):
     )
 
     add_playbook(root_graph, playbook, repo_root)
+
+    print('Number of nodes: {}'.format(root_graph.number_of_nodes()))
 
     filename = '{}-{}_{}'.format(git_checkout,
                                  os.path.split(playbook_dir)[-1],
