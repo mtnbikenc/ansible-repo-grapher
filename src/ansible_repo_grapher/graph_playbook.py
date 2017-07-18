@@ -84,6 +84,7 @@ def add_roles(roles, subgraph, node_id, repo_root):
         previous_role = role_node_id
 
 
+# pylint: disable=too-many-arguments,too-many-locals,too-many-statements,too-many-branches
 def add_tasks(tasks, subgraph, graph, node_id, playbook, repo_root):
     """ Adds tasks nodes to a subgraph """
     task_node_style = {
@@ -158,7 +159,8 @@ def add_tasks(tasks, subgraph, graph, node_id, playbook, repo_root):
 
             with open(included_file, 'r') as yaml_file:
                 included_tasks = yaml.safe_load(yaml_file.read())
-                add_tasks(included_tasks, include_subgraph, graph, task_node_id, included_file, repo_root)
+                add_tasks(included_tasks, include_subgraph, graph, task_node_id,
+                          included_file, repo_root)
 
             previous_task = task_node_id
 
@@ -234,7 +236,7 @@ def add_role_dependency(subgraph, role_node_id, role_name, repo_root,
             pass
 
 
-# pylint: disable=too-many-branches
+# pylint: disable=too-many-branches,too-many-locals,too-many-statements
 def add_playbook(graph, playbook, repo_root, parent_node=None):
     """
     Scans a playbook file and
@@ -305,7 +307,8 @@ def add_playbook(graph, playbook, repo_root, parent_node=None):
                     tasks_node_label = 'pre_tasks: {}'.format(len(task['pre_tasks']))
                     subgraph.add_node(tasks_node_id, label=tasks_node_label)
                     subgraph.add_edge(previous_node_id, tasks_node_id)
-                    add_tasks(task['pre_tasks'], subgraph, graph, tasks_node_id, playbook, repo_root)
+                    add_tasks(task['pre_tasks'], subgraph, graph, tasks_node_id,
+                              playbook, repo_root)
                     previous_node_id = tasks_node_id
 
                 if 'roles' in task:
@@ -332,7 +335,8 @@ def add_playbook(graph, playbook, repo_root, parent_node=None):
                     tasks_node_label = 'post_tasks: {}'.format(len(task['post_tasks']))
                     subgraph.add_node(tasks_node_id, label=tasks_node_label)
                     subgraph.add_edge(previous_node_id, tasks_node_id)
-                    add_tasks(task['post_tasks'], subgraph, graph, tasks_node_id, playbook, repo_root)
+                    add_tasks(task['post_tasks'], subgraph, graph, tasks_node_id,
+                              playbook, repo_root)
 
                 if previous_task is None:
                     if parent_node is not None:
